@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run of Show Builder</title>
+<meta name="description" content="Free run of show builder for event producers. Enter durations, times roll forward automatically. Share a live link, print or export to PDF and CSV.">
+<style>
+:root{--bg:#f8fafc;--card:#fff;--ink:#1f2937;--mute:#6b7280;--line:#e5e7eb;--accent:#0f766e;--accent-lt:#ccfbf1;--warn:#b91c1c;--zebra:#f9fafb}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#111827;--ink:#e5e7eb;--mute:#9ca3af;--line:#1f2937;--accent:#2dd4bf;--accent-lt:#134e4a;--warn:#f87171;--zebra:#0f172a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+header{padding:20px 16px 8px;max-width:1200px;margin:auto;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+h1{font-size:20px;margin:0;color:var(--accent)}
+.sub{color:var(--mute);font-size:13px}
+main{max-width:1200px;margin:auto;padding:0 16px 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:14px}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+label{font-size:12px;color:var(--mute);display:block;margin-bottom:3px}
+input,textarea,select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);font:inherit}
+textarea{resize:vertical;min-height:34px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:7px 12px;border-radius:6px;font:inherit;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:hover{filter:brightness(.96)}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:1080px}
+th:nth-child(5),th:nth-child(6),th:nth-child(9){min-width:150px}
+th{font-size:12px;text-align:left;color:var(--mute);font-weight:600;padding:6px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:4px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:nth-child(even) td{background:var(--zebra)}
+td.time{font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:10px;font-weight:600}
+td.num{width:48px;color:var(--mute);padding-top:10px;text-align:center}
+td input.dur{width:70px}
+td input.start{width:96px}
+.rowbtn{padding:4px 7px;font-size:12px}
+.pinned{outline:2px solid var(--accent-lt)}
+.summary{display:flex;flex-wrap:wrap;gap:18px;font-size:13px;color:var(--mute)}
+.summary b{color:var(--ink)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.promo{font-size:13px;color:var(--mute);border-left:3px solid var(--accent);padding-left:10px}
+.promo a{color:var(--accent)}
+.print-only{display:none}
+@media (max-width:640px){header{padding-top:14px}}
+@media print{
+  body{background:#fff;color:#000;font-size:11px}
+  header .btns,.no-print,.rowbtn,.promo,.toast{display:none!important}
+  .card{border:none;padding:0}
+  .print-only{display:block}
+  input,textarea,select{border:none;padding:0;background:none;color:#000;resize:none}
+  table{min-width:0}
+  td,th{border-bottom:1px solid #ccc}
+  tr{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Run of Show Builder</h1>
+    <div class="sub">Type durations and every start time rolls forward. Your work saves automatically in this browser.</div>
+  </div>
+  <div class="btns">
+    <button class="primary" id="share">Copy share link</button>
+    <button id="print">Print / PDF</button>
+    <button id="csv">Export CSV</button>
+    <button id="reset">New show</button>
+  </div>
+</header>
+<main>
+  <section class="card meta">
+    <div><label for="m-name">Event</label><input id="m-name" data-meta="name"></div>
+    <div><label for="m-date">Date</label><input id="m-date" type="date" data-meta="date"></div>
+    <div><label for="m-venue">Venue</label><input id="m-venue" data-meta="venue"></div>
+    <div><label for="m-version">Version</label><input id="m-version" data-meta="version"></div>
+  </section>
+
+  <section class="card">
+    <div class="summary" id="summary"></div>
+  </section>
+
+  <section class="card tablewrap">
+    <table>
+      <thead><tr>
+        <th>#</th><th>Start</th><th>Min</th><th>End</th><th>Segment</th><th>Description / script</th>
+        <th>Owner</th><th>Location</th><th>AV / lighting cue</th><th class="no-print"></th>
+      </tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="btns no-print" style="margin-top:10px">
+      <button id="add" class="primary">+ Add segment</button>
+    </div>
+  </section>
+
+  <p class="promo no-print">Planning the whole event? The <a id="kit-link" href="#" target="_blank" rel="noopener">Event Production Kit</a> adds a linked budget, vendors, guest RSVPs and a task dashboard in Excel and Google Sheets.</p>
+  <p class="print-only sub" id="printfoot"></p>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  "use strict";
+  var KIT_URL = "#"; // TODO: set to your Etsy listing URL once live
+  var KEY = "ros-builder-v1";
+
+  function demo(){
+    return {
+      meta:{name:"Annual Partner Summit",date:"",venue:"Riverside Conference Centre",version:"v1"},
+      rows:[
+        {start:"08:00",dur:60,seg:"Crew call & sound check",desc:"Line check, comms test",owner:"Stage manager",loc:"Main hall",cue:"House lights full"},
+        {dur:30,seg:"Doors / registration",desc:"Badges, welcome coffee",owner:"Reg lead",loc:"Foyer",cue:"Walk-in music, holding slide"},
+        {dur:10,seg:"Welcome",desc:"MC opens, housekeeping",owner:"MC",loc:"Main stage",cue:"Lights 50%, MC mic live"},
+        {dur:40,seg:"Keynote",desc:"",owner:"Speaker",loc:"Main stage",cue:"Lapel mic, slides SC1"},
+        {dur:20,seg:"Coffee break",desc:"",owner:"Catering",loc:"Foyer",cue:"Break slide + music"},
+        {dur:45,seg:"Panel session",desc:"3 panellists + moderator",owner:"Moderator",loc:"Main stage",cue:"4 handhelds"},
+        {dur:60,seg:"Lunch",desc:"Buffet, networking",owner:"Catering",loc:"Dining hall",cue:"Lunch playlist"}
+      ]
+    };
+  }
+  function blank(){ return {meta:{name:"",date:"",venue:"",version:"v1"},rows:[{start:"09:00",dur:30,seg:"",desc:"",owner:"",loc:"",cue:""}]}; }
+
+  // ---- state load: share link > local storage > demo
+  function decode(h){
+    try{
+      var b = h.replace(/-/g,"+").replace(/_/g,"/");
+      var json = decodeURIComponent(escape(atob(b)));
+      var s = JSON.parse(json);
+      if(s && Array.isArray(s.rows)) return s;
+    }catch(e){}
+    return null;
+  }
+  function encode(s){
+    return btoa(unescape(encodeURIComponent(JSON.stringify(s)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  }
+  var state = null;
+  if(location.hash.length > 3){ state = decode(location.hash.slice(3)); }
+  if(!state){ try{ state = JSON.parse(localStorage.getItem(KEY)); }catch(e){ state = null; } }
+  if(!state || !Array.isArray(state.rows)) state = demo();
+  state.meta = state.meta || {};
+
+  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+
+  // ---- time helpers (minutes since midnight)
+  function toMin(t){ if(!t) return null; var m=/^(\d{1,2}):(\d{2})$/.exec(t); return m ? (+m[1])*60 + (+m[2]) : null; }
+  function fmt(min){ if(min==null) return ""; min=((min%1440)+1440)%1440; var h=Math.floor(min/60), m=min%60; return (h<10?"0":"")+h+":"+(m<10?"0":"")+m; }
+  function times(){
+    var out=[], cur=null;
+    state.rows.forEach(function(r){
+      var pinned = toMin(r.start);
+      var s = pinned!=null ? pinned : cur;
+      var d = Number(r.dur)||0;
+      var e = s!=null ? s+d : null;
+      out.push({s:s,e:e,pinned:pinned!=null});
+      cur = e;
+    });
+    return out;
+  }
+
+  var tbody = document.getElementById("rows");
+  var FIELDS = [["seg","input"],["desc","textarea"],["owner","input"],["loc","input"],["cue","textarea"]];
+
+  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+
+  function render(){
+    var t = times();
+    var html = "";
+    state.rows.forEach(function(r,i){
+      html += '<tr data-i="'+i+'">'
+        + '<td class="num">'+(i+1)+'</td>'
+        + (t[i].pinned
+            ? '<td style="white-space:nowrap"><input class="start pinned" type="time" data-f="start" value="'+esc(r.start)+'" aria-label="Fixed start time"> <button class="rowbtn no-print" data-act="unpin" title="Follow previous segment instead">auto</button></td>'
+            : '<td class="time" style="white-space:nowrap"><span class="st">'+(fmt(t[i].s)||"–")+'</span> <button class="rowbtn no-print" data-act="pin" title="Fix this segment to a set start time">fix</button></td>')
+        + '<td><input class="dur" type="number" min="0" step="5" data-f="dur" value="'+esc(r.dur)+'" aria-label="Duration in minutes"></td>'
+        + '<td class="time">'+fmt(t[i].e)+'</td>';
+      FIELDS.forEach(function(f){
+        html += f[1]==="textarea"
+          ? '<td><textarea rows="1" data-f="'+f[0]+'">'+esc(r[f[0]])+'</textarea></td>'
+          : '<td><input data-f="'+f[0]+'" value="'+esc(r[f[0]])+'"></td>';
+      });
+      html += '<td class="no-print" style="white-space:nowrap">'
+        + '<button class="rowbtn" data-act="up" title="Move up" aria-label="Move up">↑</button> '
+        + '<button class="rowbtn" data-act="down" title="Move down" aria-label="Move down">↓</button> '
+        + '<button class="rowbtn" data-act="dup" title="Duplicate" aria-label="Duplicate">⧉</button> '
+        + '<button class="rowbtn" data-act="del" title="Delete" aria-label="Delete">✕</button></td></tr>';
+    });
+    tbody.innerHTML = html;
+    summary(t);
+  }
+
+  function summary(t){
+    t = t || times();
+    var first = t.length ? t[0].s : null, last = t.length ? t[t.length-1].e : null;
+    var total = state.rows.reduce(function(a,r){ return a+(Number(r.dur)||0); },0);
+    document.getElementById("summary").innerHTML =
+      'Segments <b>'+state.rows.length+'</b> &nbsp; Starts <b>'+(fmt(first)||"–")+'</b> &nbsp; Ends <b>'+(fmt(last)||"–")+'</b> &nbsp; Programme time <b>'+Math.floor(total/60)+'h '+(total%60)+'m</b>';
+    var m = state.meta;
+    document.getElementById("printfoot").textContent = [m.name,m.date,m.venue,m.version].filter(Boolean).join(" · ");
+    document.title = (m.name ? m.name+" – " : "") + "Run of Show Builder";
+  }
+
+  // live-update times without re-rendering the focused input
+  function refreshTimes(){
+    var t = times();
+    Array.prototype.forEach.call(tbody.rows,function(tr,i){
+      tr.cells[3].textContent = fmt(t[i].e);
+      var st = tr.cells[1].querySelector(".st");
+      if(st) st.textContent = fmt(t[i].s) || "–";
+    });
+    summary(t);
+  }
+
+  tbody.addEventListener("input", function(e){
+    var el = e.target, tr = el.closest("tr"); if(!tr || !el.dataset.f) return;
+    var i = +tr.dataset.i, f = el.dataset.f;
+    state.rows[i][f] = f==="dur" ? (el.value===""?"":Number(el.value)) : el.value;
+    save(); refreshTimes();
+  });
+  tbody.addEventListener("click", function(e){
+    var b = e.target.closest("button[data-act]"); if(!b) return;
+    var i = +b.closest("tr").dataset.i, rows = state.rows;
+    if(b.dataset.act==="up" && i>0){ rows.splice(i-1,0,rows.splice(i,1)[0]); }
+    else if(b.dataset.act==="down" && i<rows.length-1){ rows.splice(i+1,0,rows.splice(i,1)[0]); }
+    else if(b.dataset.act==="dup"){ var c = JSON.parse(JSON.stringify(rows[i])); delete c.start; rows.splice(i+1,0,c); }
+    else if(b.dataset.act==="del"){ if(rows.length===1) return; rows.splice(i,1); }
+    else if(b.dataset.act==="pin"){ rows[i].start = fmt(times()[i].s) || "09:00"; }
+    else if(b.dataset.act==="unpin"){ if(i===0) return toast("The first segment needs a start time"); delete rows[i].start; }
+    save(); render();
+  });
+  document.getElementById("add").onclick = function(){
+    state.rows.push({dur:15,seg:"",desc:"",owner:"",loc:"",cue:""}); save(); render();
+    var ins = tbody.querySelectorAll('input[data-f="seg"]'); ins[ins.length-1].focus();
+  };
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-meta]"),function(el){
+    el.value = state.meta[el.dataset.meta] || "";
+    el.addEventListener("input",function(){ state.meta[el.dataset.meta]=el.value; save(); summary(); });
+  });
+
+  function toast(msg){ var t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(function(){t.classList.remove("show");},1800); }
+
+  document.getElementById("share").onclick = function(){
+    var url = location.href.split("#")[0] + "#s=" + encode(state);
+    function done(){ toast("Share link copied: anyone with it sees this version"); }
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(done,function(){ prompt("Copy this link:",url); }); }
+    else prompt("Copy this link:",url);
+  };
+  document.getElementById("print").onclick = function(){ window.print(); };
+  document.getElementById("csv").onclick = function(){
+    var t = times();
+    var head = ["#","Start","Duration (min)","End","Segment","Description","Owner","Location","AV / lighting cue"];
+    var lines = [head].concat(state.rows.map(function(r,i){ return [i+1,fmt(t[i].s),r.dur,fmt(t[i].e),r.seg,r.desc,r.owner,r.loc,r.cue]; }));
+    var csv = lines.map(function(l){ return l.map(function(v){ v=String(v==null?"":v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }).join(","); }).join("\r\n");
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv"}));
+    a.download = (state.meta.name||"run-of-show").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-") + ".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+  };
+  document.getElementById("reset").onclick = function(){
+    if(!confirm("Start a new blank show? Your current show in this browser will be replaced.")) return;
+    state = blank(); save(); history.replaceState(null,"",location.pathname);
+    Array.prototype.forEach.call(document.querySelectorAll("[data-meta]"),function(el){ el.value = state.meta[el.dataset.meta]||""; });
+    render();
+  };
+
+  var kl = document.getElementById("kit-link");
+  if(KIT_URL === "#") kl.closest(".promo").style.display = "none"; else kl.href = KIT_URL;
+
+  if(location.hash.length > 3) save(); // opening a share link adopts it locally
+  render();
+})();
+</script>
+</body>
+</html>
