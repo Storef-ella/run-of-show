@@ -42,6 +42,8 @@ td input.start{width:96px}
 .promo{font-size:13px;color:var(--mute);border-left:3px solid var(--accent);padding-left:10px}
 .promo a{color:var(--accent)}
 .print-only{display:none}
+.library{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.library select{width:auto;min-width:220px;max-width:100%}
 @media (max-width:640px){header{padding-top:14px}}
 @media print{
   body{background:#fff;color:#000;font-size:11px}
@@ -65,10 +67,21 @@ td input.start{width:96px}
     <button class="primary" id="share">Copy share link</button>
     <button id="print">Print / PDF</button>
     <button id="csv">Export CSV</button>
-    <button id="reset">New show</button>
   </div>
 </header>
 <main>
+  <section class="card no-print library">
+    <label for="picker" style="margin:0">My shows</label>
+    <select id="picker" aria-label="Choose a saved show"></select>
+    <div class="btns">
+      <button id="new">+ New show</button>
+      <button id="dupshow">Duplicate</button>
+      <button id="delshow">Delete</button>
+      <button id="savefile" title="Download a backup file of this show">Save to file</button>
+      <button id="openfile" title="Open a show from a backup file">Open file</button>
+      <input type="file" id="fileinput" accept=".json,application/json" hidden>
+    </div>
+  </section>
   <section class="card meta">
     <div><label for="m-name">Event</label><input id="m-name" data-meta="name"></div>
     <div><label for="m-date">Date</label><input id="m-date" type="date" data-meta="date"></div>
@@ -81,6 +94,7 @@ td input.start{width:96px}
   </section>
 
   <section class="card tablewrap">
+    <p class="sub no-print" style="margin:0 0 8px">Start times follow the segment before. Click <b>lock</b> to fix a segment to a set time (e.g. lunch at 12:30). Everything after it moves from there.</p>
     <table>
       <thead><tr>
         <th>#</th><th>Start</th><th>Min</th><th>End</th><th>Segment</th><th>Description / script</th>
@@ -134,13 +148,45 @@ td input.start{width:96px}
   function encode(s){
     return btoa(unescape(encodeURIComponent(JSON.stringify(s)))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
   }
-  var state = null;
-  if(location.hash.length > 3){ state = decode(location.hash.slice(3)); }
-  if(!state){ try{ state = JSON.parse(localStorage.getItem(KEY)); }catch(e){ state = null; } }
-  if(!state || !Array.isArray(state.rows)) state = demo();
+  // ---- library of shows: {current:id, shows:{id:show}}
+  var LIB_KEY = "ros-builder-v2";
+  function uid(){ return "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+  function valid(s){ return s && Array.isArray(s.rows) && s.rows.length; }
+  var lib = null;
+  try{ lib = JSON.parse(localStorage.getItem(LIB_KEY)); }catch(e){ lib = null; }
+  if(!lib || !lib.shows || !Object.keys(lib.shows).length){
+    var old = null;
+    try{ old = JSON.parse(localStorage.getItem(KEY)); }catch(e){ old = null; }
+    var first = valid(old) ? old : demo(), fid = uid();
+    lib = {current:fid, shows:{}}; lib.shows[fid] = first;
+  }
+  var pendingToast = "";
+  if(location.hash.length > 3){
+    var shared = decode(location.hash.slice(3));
+    if(valid(shared)){
+      var sid = uid(); shared.meta = shared.meta || {};
+      shared.meta.name = (shared.meta.name || "Shared show") + " (shared)";
+      lib.shows[sid] = shared; lib.current = sid;
+      pendingToast = "Opened the shared show as a new copy. Your other shows are kept under My shows.";
+    }
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  if(!lib.shows[lib.current]) lib.current = Object.keys(lib.shows)[0];
+  var state = lib.shows[lib.current];
   state.meta = state.meta || {};
 
-  function save(){ try{ localStorage.setItem(KEY, JSON.stringify(state)); }catch(e){} }
+  function save(){ lib.shows[lib.current] = state; try{ localStorage.setItem(LIB_KEY, JSON.stringify(lib)); }catch(e){} }
+  function showName(s){ return (s.meta && s.meta.name) || "Untitled show"; }
+  function fillPicker(){
+    var p = document.getElementById("picker"), ids = Object.keys(lib.shows);
+    p.innerHTML = ids.map(function(id){ return '<option value="'+id+'"'+(id===lib.current?" selected":"")+'>'+esc(showName(lib.shows[id]))+'</option>'; }).join("");
+  }
+  function switchTo(id){
+    lib.current = id; state = lib.shows[id]; state.meta = state.meta || {};
+    Array.prototype.forEach.call(document.querySelectorAll("[data-meta]"),function(el){ el.value = state.meta[el.dataset.meta]||""; });
+    save(); fillPicker(); render();
+  }
+  function addShow(s, msg){ var id = uid(); lib.shows[id] = s; switchTo(id); if(msg) toast(msg); }
 
   // ---- time helpers (minutes since midnight)
   function toMin(t){ if(!t) return null; var m=/^(\d{1,2}):(\d{2})$/.exec(t); return m ? (+m[1])*60 + (+m[2]) : null; }
@@ -170,8 +216,8 @@ td input.start{width:96px}
       html += '<tr data-i="'+i+'">'
         + '<td class="num">'+(i+1)+'</td>'
         + (t[i].pinned
-            ? '<td style="white-space:nowrap"><input class="start pinned" type="time" data-f="start" value="'+esc(r.start)+'" aria-label="Fixed start time"> <button class="rowbtn no-print" data-act="unpin" title="Follow previous segment instead">auto</button></td>'
-            : '<td class="time" style="white-space:nowrap"><span class="st">'+(fmt(t[i].s)||"–")+'</span> <button class="rowbtn no-print" data-act="pin" title="Fix this segment to a set start time">fix</button></td>')
+            ? '<td style="white-space:nowrap"><input class="start pinned" type="time" data-f="start" value="'+esc(r.start)+'" aria-label="Locked start time"> <button class="rowbtn no-print" data-act="unpin" title="Unlock: follow the previous segment again">unlock</button></td>'
+            : '<td class="time" style="white-space:nowrap"><span class="st">'+(fmt(t[i].s)||"–")+'</span> <button class="rowbtn no-print" data-act="pin" title="Lock this segment to a set start time">lock</button></td>')
         + '<td><input class="dur" type="number" min="0" step="5" data-f="dur" value="'+esc(r.dur)+'" aria-label="Duration in minutes"></td>'
         + '<td class="time">'+fmt(t[i].e)+'</td>';
       FIELDS.forEach(function(f){
@@ -235,10 +281,10 @@ td input.start{width:96px}
 
   Array.prototype.forEach.call(document.querySelectorAll("[data-meta]"),function(el){
     el.value = state.meta[el.dataset.meta] || "";
-    el.addEventListener("input",function(){ state.meta[el.dataset.meta]=el.value; save(); summary(); });
+    el.addEventListener("input",function(){ state.meta[el.dataset.meta]=el.value; save(); summary(); if(el.dataset.meta==="name") fillPicker(); });
   });
 
-  function toast(msg){ var t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(function(){t.classList.remove("show");},1800); }
+  function toast(msg){ var t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show"); setTimeout(function(){t.classList.remove("show");},3200); }
 
   document.getElementById("share").onclick = function(){
     var url = location.href.split("#")[0] + "#s=" + encode(state);
@@ -257,18 +303,46 @@ td input.start{width:96px}
     a.download = (state.meta.name||"run-of-show").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-") + ".csv";
     document.body.appendChild(a); a.click(); a.remove();
   };
-  document.getElementById("reset").onclick = function(){
-    if(!confirm("Start a new blank show? Your current show in this browser will be replaced.")) return;
-    state = blank(); save(); history.replaceState(null,"",location.pathname);
-    Array.prototype.forEach.call(document.querySelectorAll("[data-meta]"),function(el){ el.value = state.meta[el.dataset.meta]||""; });
-    render();
+  document.getElementById("picker").onchange = function(){ switchTo(this.value); };
+  document.getElementById("new").onclick = function(){ addShow(blank(), "New show created. Your other shows are kept."); };
+  document.getElementById("dupshow").onclick = function(){
+    var c = JSON.parse(JSON.stringify(state)); c.meta.name = showName(state) + " (copy)"; addShow(c, "Show duplicated");
+  };
+  document.getElementById("delshow").onclick = function(){
+    if(!confirm('Delete "' + showName(state) + '"? This cannot be undone. Save it to a file first if you might need it.')) return;
+    delete lib.shows[lib.current];
+    var ids = Object.keys(lib.shows);
+    if(!ids.length){ var id = uid(); lib.shows[id] = blank(); ids = [id]; }
+    switchTo(ids[0]); toast("Show deleted");
+  };
+  document.getElementById("savefile").onclick = function(){
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({app:"storefella-run-of-show",v:2,show:state},null,2)],{type:"application/json"}));
+    a.download = (showName(state)).replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"-") + ".runofshow.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    toast("Saved to your downloads");
+  };
+  var fi = document.getElementById("fileinput");
+  document.getElementById("openfile").onclick = function(){ fi.value = ""; fi.click(); };
+  fi.onchange = function(){
+    var f = fi.files && fi.files[0]; if(!f) return;
+    var rd = new FileReader();
+    rd.onload = function(){
+      try{
+        var data = JSON.parse(rd.result), s = data && data.show ? data.show : data;
+        if(!valid(s)) throw new Error("bad");
+        s.meta = s.meta || {};
+        addShow(s, "Opened " + showName(s));
+      }catch(e){ toast("That file isn't a Run of Show backup"); }
+    };
+    rd.readAsText(f);
   };
 
   var kl = document.getElementById("kit-link");
   if(KIT_URL === "#") kl.closest(".promo").style.display = "none"; else kl.href = KIT_URL;
 
-  if(location.hash.length > 3) save(); // opening a share link adopts it locally
-  render();
+  save(); fillPicker(); render();
+  if(pendingToast) setTimeout(function(){ toast(pendingToast); }, 300);
 })();
 </script>
 </body>
